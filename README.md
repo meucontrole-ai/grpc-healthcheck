@@ -24,7 +24,11 @@ grpc_adapter.Register(grpcServer, hc)
 | Service | Use |
 | --- | --- |
 | `meucontrole.health.v1.HealthReport/Check` | full report: every check with status, description, exception, data, duration |
-| `grpc.health.v1.Health` | standard probe (k8s `grpc:` probe, grpcurl): `NOT_SERVING` when the report is `Unhealthy` |
+| `grpc.health.v1.Health` | liveness probe (ECS `grpc_health_probe`, k8s `grpc:`): `NOT_SERVING` only when a liveness check is `Unhealthy` |
+
+Liveness checks default to `serving` (the drain check flipped on shutdown); a missing one means always
+`SERVING`. Dependencies (postgres, redis) never drive it: an orchestrator restarts a process whose probe
+fails, so a database blip must not kill every task. Set `Options.LivenessChecks` to change the list.
 
 `ExposeDetails: true` is expected: the report only travels inside the cluster and the caller decides
 what to publish.

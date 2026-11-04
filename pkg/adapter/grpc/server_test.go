@@ -76,12 +76,32 @@ func TestProbeKeepsExceptionsWhenAsked(t *testing.T) {
 	}
 }
 
-func TestStandardHealthFollowsReport(t *testing.T) {
-	ok := dial(t, func(s *grpc.Server) { grpc_adapter.Register(s, manager(nil)) })
-	bad := dial(t, func(s *grpc.Server) { grpc_adapter.Register(s, manager(errors.New("x"))) })
+func drainingManager(draining bool) *usecase.HealthCheckManager {
+	m := manager(errors.New("db down"))
+	m.AddCheckFunc("serving", func() *domain.HealthCheckResult {
+		if draining {
+			return domain.Unhealthy("draining", nil, nil)
+		}
+		return domain.Healthy("serving", nil)
+	})
+	return m
+}
+
+func TestStandardHealthIsLivenessOnly(t *testing.T) {
+	dbDown := dial(t, func(s *grpc.Server) { grpc_adapter.Register(s, drainingManager(false)) })
+	draining := dial(t, func(s *grpc.Server) { grpc_adapter.Register(s, drainingManager(true)) })
+	noLiveness := dial(t, func(s *grpc.Server) {
+		grpc_adapter.Register(s, drainingManager(true), grpc_adapter.Options{LivenessChecks: []string{}})
+	})
+	strict := dial(t, func(s *grpc.Server) {
+		grpc_adapter.Register(s, manager(errors.New("x")), grpc_adapter.Options{LivenessChecks: []string{"postgres"}})
+	})
 
 	for conn, want := range map[*grpc.ClientConn]healthgrpc.HealthCheckResponse_ServingStatus{
-		ok: healthgrpc.HealthCheckResponse_SERVING, bad: healthgrpc.HealthCheckResponse_NOT_SERVING,
+		dbDown:     healthgrpc.HealthCheckResponse_SERVING,
+		draining:   healthgrpc.HealthCheckResponse_NOT_SERVING,
+		noLiveness: healthgrpc.HealthCheckResponse_SERVING,
+		strict:     healthgrpc.HealthCheckResponse_NOT_SERVING,
 	} {
 		resp, err := healthgrpc.NewHealthClient(conn).Check(context.Background(), &healthgrpc.HealthCheckRequest{})
 		if err != nil || resp.GetStatus() != want {

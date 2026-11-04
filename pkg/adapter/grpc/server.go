@@ -20,13 +20,19 @@ import (
 // DefaultWatchInterval is how often grpc.health.v1 Watch re-runs the checks to detect a change.
 const DefaultWatchInterval = 10 * time.Second
 
+// DefaultLivenessChecks are the checks grpc.health.v1 follows when Options.LivenessChecks is nil.
+var DefaultLivenessChecks = []string{"serving"}
+
 // Options configures the gRPC health services.
 type Options struct {
 	// WatchInterval paces grpc.health.v1 Watch; zero means DefaultWatchInterval.
 	WatchInterval time.Duration
+	// LivenessChecks names the checks that turn grpc.health.v1 NOT_SERVING when Unhealthy; nil means
+	// DefaultLivenessChecks, empty means always SERVING. Dependencies stay out: probes restart the process.
+	LivenessChecks []string
 }
 
-// Register mounts HealthReport and grpc.health.v1.Health, both answered by m, on s.
+// Register mounts HealthReport (full report of m) and grpc.health.v1.Health (liveness) on s.
 // Build m with ExposeDetails true: the report only travels inside the cluster and callers strip it.
 func Register(s grpc.ServiceRegistrar, m *usecase.HealthCheckManager, opts ...Options) {
 	o := Options{}
@@ -36,8 +42,15 @@ func Register(s grpc.ServiceRegistrar, m *usecase.HealthCheckManager, opts ...Op
 	if o.WatchInterval <= 0 {
 		o.WatchInterval = DefaultWatchInterval
 	}
+	if o.LivenessChecks == nil {
+		o.LivenessChecks = DefaultLivenessChecks
+	}
+	live := make(map[string]bool, len(o.LivenessChecks))
+	for _, n := range o.LivenessChecks {
+		live[n] = true
+	}
 	healthv1.RegisterHealthReportServer(s, &reportServer{m: m})
-	healthgrpc.RegisterHealthServer(s, &standardServer{m: m, watchEvery: o.WatchInterval})
+	healthgrpc.RegisterHealthServer(s, &standardServer{m: m, watchEvery: o.WatchInterval, live: live})
 }
 
 type reportServer struct {
@@ -84,12 +97,20 @@ type standardServer struct {
 	healthgrpc.UnimplementedHealthServer
 	m          *usecase.HealthCheckManager
 	watchEvery time.Duration
+	live       map[string]bool
 }
 
 func (h *standardServer) serving(ctx context.Context) healthgrpc.HealthCheckResponse_ServingStatus {
+	if len(h.live) == 0 {
+		return healthgrpc.HealthCheckResponse_SERVING
+	}
 	_, report := h.m.Run(ctx)
-	if report.Status == domain.HealthStatusUnhealthy {
-		return healthgrpc.HealthCheckResponse_NOT_SERVING
+	for _, entry := range report.HealthCheck {
+		for name, res := range entry {
+			if h.live[name] && res.Status == domain.HealthStatusUnhealthy {
+				return healthgrpc.HealthCheckResponse_NOT_SERVING
+			}
+		}
 	}
 	return healthgrpc.HealthCheckResponse_SERVING
 }
