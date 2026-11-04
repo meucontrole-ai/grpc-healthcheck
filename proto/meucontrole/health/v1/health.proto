@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package meucontrole.health.v1;
+
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/meucontrole-ai/grpc-healthcheck/pkg/pb/healthv1;healthv1";
+
+// HealthReport answers the meucontrole health contract over gRPC, with the same
+// fields as the JSON report of github.com/meucontrole-ai/fiber-healthcheck.
+service HealthReport {
+  // Check runs every registered check of the service and returns the aggregate.
+  rpc Check(CheckRequest) returns (CheckResponse);
+}
+
+// CheckRequest carries no parameters: the service reports every check it owns.
+message CheckRequest {}
+
+// CheckResponse is the aggregated report: Healthy, Degraded or Unhealthy.
+message CheckResponse {
+  string status = 1;
+  repeated CheckResult checks = 2;
+}
+
+// CheckResult is one check, in the shape of the fiber-healthcheck HealthCheckResult.
+message CheckResult {
+  string name = 1;
+  string status = 2;
+  string description = 3;
+  optional string exception = 4;
+  google.protobuf.Struct data = 5;
+  string duration = 6;
+}
