@@ -78,7 +78,7 @@ func TestTimeoutPanicNilAndInvalid(t *testing.T) {
 
 func TestServingIsBuiltInAndDrains(t *testing.T) {
 	m := NewHealthCheckManager()
-	m.AddCheckFunc("db", func() *domain.HealthCheckResult { return domain.Healthy("ok", nil) })
+	m.AddCheckFunc("postgres", func() *domain.HealthCheckResult { return domain.Healthy("ok", nil) })
 
 	code, r := m.Run(context.Background())
 	if code != 200 || r.Status != domain.HealthStatusHealthy || len(r.HealthCheck) != 2 {
@@ -115,11 +115,11 @@ func TestDetailsHiddenByDefault(t *testing.T) {
 			logged = *r.Exception
 		}
 	}})
-	m.AddCheckFunc("db", func() *domain.HealthCheckResult {
+	m.AddCheckFunc("postgres", func() *domain.HealthCheckResult {
 		return domain.Unhealthy("db down", errors.New("dial postgres://app:secret@10.0.0.5"), map[string]string{"host": "10.0.0.5"})
 	})
 	_, r := m.Run(context.Background())
-	res := r.HealthCheck[0]["db"]
+	res := r.HealthCheck[0]["postgres"]
 	if res.Exception != nil || len(res.Data.(map[string]any)) != 0 {
 		t.Fatalf("details leaked: %+v", res)
 	}
@@ -127,9 +127,9 @@ func TestDetailsHiddenByDefault(t *testing.T) {
 		t.Fatal("OnResult must receive full details")
 	}
 	m2 := NewHealthCheckManager(HealthCheckOptions{CacheTTL: -1, ExposeDetails: true})
-	m2.AddCheckFunc("db", func() *domain.HealthCheckResult { return domain.Unhealthy("db down", errors.New("x"), nil) })
+	m2.AddCheckFunc("postgres", func() *domain.HealthCheckResult { return domain.Unhealthy("db down", errors.New("x"), nil) })
 	_, r2 := m2.Run(context.Background())
-	if r2.HealthCheck[0]["db"].Exception == nil {
+	if r2.HealthCheck[0]["postgres"].Exception == nil {
 		t.Fatal("ExposeDetails must expose exception")
 	}
 }
@@ -137,7 +137,7 @@ func TestDetailsHiddenByDefault(t *testing.T) {
 func TestCacheAndSingleFlight(t *testing.T) {
 	var calls atomic.Int32
 	m := NewHealthCheckManager(HealthCheckOptions{CacheTTL: time.Minute})
-	m.AddCheckFunc("db", func() *domain.HealthCheckResult {
+	m.AddCheckFunc("postgres", func() *domain.HealthCheckResult {
 		calls.Add(1)
 		time.Sleep(50 * time.Millisecond)
 		return domain.Healthy("ok", nil)

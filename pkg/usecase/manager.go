@@ -55,9 +55,6 @@ type namedCheck struct {
 // ServingCheck is the built-in check of every manager: Healthy until Drain, Unhealthy afterwards.
 const ServingCheck = "serving"
 
-// reservedChecks cannot be registered: "serving" is built in and "self" would only restate it.
-var reservedChecks = map[string]bool{ServingCheck: true, "self": true}
-
 // HealthCheckManager registers and runs health checks. It is safe for concurrent use.
 type HealthCheckManager struct {
 	mu       sync.RWMutex
@@ -154,8 +151,8 @@ func (m *HealthCheckManager) AddCheckContext(name string, f func(ctx context.Con
 }
 
 func (m *HealthCheckManager) add(name string, c domain.ContextHealthCheck) {
-	if reservedChecks[name] {
-		panic(fmt.Sprintf("healthcheck: %q is reserved (serving is built in; use Drain on shutdown)", name))
+	if err := ValidateName(name); err != nil {
+		panic(err.Error())
 	}
 	m.mu.Lock()
 	m.checks[name] = c

@@ -62,3 +62,18 @@ or `serving` (both names are reserved and `AddCheck*` panics on them). Call `Dra
 starts, before the server stops accepting work, so probes and callers route away first. The Fiber
 adapter `Register` does it on `app.Shutdown()`; `DrainOnShutdown(app, managers...)` covers extra
 managers. A gRPC service calls `hc.Drain()` right before `GracefulStop()`.
+
+## Naming and description standard
+
+Check names are lowercase kebab words with at most one `.` before a role; `AddCheck*` panics otherwise.
+
+| Kind | Name | Register with |
+| --- | --- | --- |
+| built in | `serving` | nothing (call `Drain()` on shutdown) |
+| dependency | `<technology>` or `<technology>.<role>`: `postgres`, `postgres.admin`, `redis.cache`, `redis.stream`, `mongodb`, `dynamodb`, `sqs.consumer`, `s3`, `hydra.admin` | `AddPing(name, Critical\|Optional, ping)` |
+| local configuration | `config.<name>`: `config.signing-key` | `AddConfig(name, Critical\|Optional, configured)` |
+| remote service (gateway chain) | the service name: `merchant-service-core` | the gRPC client `client.NewCheck` |
+
+Aliases are rejected with the standard name in the message (`database`/`db` -> `postgres`, `cache` -> `redis.cache`,
+`admin-db` -> `postgres.admin`, `self` -> `serving`). Descriptions come from the library, never from the service:
+`ping ok` / `ping failed`, `configured` / `not configured`; the error of a failed ping is the exception.
