@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/meucontrole-ai/grpc-healthcheck/pkg/domain"
@@ -51,11 +52,18 @@ type namedCheck struct {
 	check domain.ContextHealthCheck
 }
 
+// ServingCheck is the built-in check of every manager: Healthy until Drain, Unhealthy afterwards.
+const ServingCheck = "serving"
+
+// reservedChecks cannot be registered: "serving" is built in and "self" would only restate it.
+var reservedChecks = map[string]bool{ServingCheck: true, "self": true}
+
 // HealthCheckManager registers and runs health checks. It is safe for concurrent use.
 type HealthCheckManager struct {
-	mu      sync.RWMutex
-	checks  map[string]domain.ContextHealthCheck
-	options HealthCheckOptions
+	mu       sync.RWMutex
+	checks   map[string]domain.ContextHealthCheck
+	options  HealthCheckOptions
+	draining atomic.Bool
 
 	runMu    sync.Mutex
 	cached   *cachedRun
@@ -91,7 +99,28 @@ func NewHealthCheckManager(opts ...HealthCheckOptions) *HealthCheckManager {
 		options.ExposeDetails = o.ExposeDetails
 		options.OnResult = o.OnResult
 	}
-	return &HealthCheckManager{checks: make(map[string]domain.ContextHealthCheck), options: options}
+	m := &HealthCheckManager{checks: make(map[string]domain.ContextHealthCheck), options: options}
+	m.checks[ServingCheck] = funcCheck(func(context.Context) *domain.HealthCheckResult {
+		if m.draining.Load() {
+			return domain.Unhealthy("shutting down", nil, nil)
+		}
+		return domain.Healthy("serving", nil)
+	})
+	return m
+}
+
+// Drain flips the built-in "serving" check to Unhealthy; call it when shutdown starts, before
+// the server stops accepting work, so probes and callers route away first.
+func (m *HealthCheckManager) Drain() {
+	m.draining.Store(true)
+	m.runMu.Lock()
+	m.cached = nil
+	m.runMu.Unlock()
+}
+
+// Draining reports whether Drain was called.
+func (m *HealthCheckManager) Draining() bool {
+	return m.draining.Load()
 }
 
 type legacyCheck struct{ c domain.HealthCheck }
@@ -125,6 +154,9 @@ func (m *HealthCheckManager) AddCheckContext(name string, f func(ctx context.Con
 }
 
 func (m *HealthCheckManager) add(name string, c domain.ContextHealthCheck) {
+	if reservedChecks[name] {
+		panic(fmt.Sprintf("healthcheck: %q is reserved (serving is built in; use Drain on shutdown)", name))
+	}
 	m.mu.Lock()
 	m.checks[name] = c
 	m.mu.Unlock()

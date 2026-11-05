@@ -56,8 +56,8 @@ func TestProbeNestsRemoteReport(t *testing.T) {
 	}
 	report := res.Data.(map[string]any)
 	checks := report["health_check"].([]any)
-	if len(checks) != 2 {
-		t.Fatalf("checks = %d, want 2", len(checks))
+	if len(checks) != 3 {
+		t.Fatalf("checks = %d, want 3 (postgres, redis, serving)", len(checks))
 	}
 	pg := checks[0].(map[string]any)["postgres"].(map[string]any)
 	if pg["status"] != "Unhealthy" || pg["exception"] != nil || pg["data"].(map[string]any)["pool"] != "admin" {
@@ -78,12 +78,9 @@ func TestProbeKeepsExceptionsWhenAsked(t *testing.T) {
 
 func drainingManager(draining bool) *usecase.HealthCheckManager {
 	m := manager(errors.New("db down"))
-	m.AddCheckFunc("serving", func() *domain.HealthCheckResult {
-		if draining {
-			return domain.Unhealthy("draining", nil, nil)
-		}
-		return domain.Healthy("serving", nil)
-	})
+	if draining {
+		m.Drain()
+	}
 	return m
 }
 

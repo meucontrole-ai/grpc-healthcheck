@@ -21,7 +21,7 @@ import (
 const DefaultWatchInterval = 10 * time.Second
 
 // DefaultLivenessChecks are the checks grpc.health.v1 follows when Options.LivenessChecks is nil.
-var DefaultLivenessChecks = []string{"serving"}
+var DefaultLivenessChecks = []string{usecase.ServingCheck}
 
 // Options configures the gRPC health services.
 type Options struct {

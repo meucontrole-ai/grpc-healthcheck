@@ -53,3 +53,12 @@ protoc -I proto --go_out=. --go_opt=module=github.com/meucontrole-ai/grpc-health
   --go-grpc_out=. --go-grpc_opt=module=github.com/meucontrole-ai/grpc-healthcheck \
   proto/meucontrole/health/v1/health.proto
 ```
+
+## Built-in `serving` check
+
+Every `HealthCheckManager` is born with a `serving` check: `Healthy` until `Drain()` is called,
+`Unhealthy` afterwards. It is the only "the process is up" signal; never register your own `self`
+or `serving` (both names are reserved and `AddCheck*` panics on them). Call `Drain()` when shutdown
+starts, before the server stops accepting work, so probes and callers route away first. The Fiber
+adapter `Register` does it on `app.Shutdown()`; `DrainOnShutdown(app, managers...)` covers extra
+managers. A gRPC service calls `hc.Drain()` right before `GracefulStop()`.
