@@ -77,3 +77,8 @@ Check names are lowercase kebab words with at most one `.` before a role; `AddCh
 Aliases are rejected with the standard name in the message (`database`/`db` -> `postgres`, `cache` -> `redis.cache`,
 `admin-db` -> `postgres.admin`, `self` -> `serving`). Descriptions come from the library, never from the service:
 `ping ok` / `ping failed`, `configured` / `not configured`; the error of a failed ping is the exception.
+
+## Documentation
+
+- [Architecture](docs/architecture.md): packages, the two gRPC services and the gateway health chain.
+- [Development and release](docs/operations.md): local checks, CI, dependency updates, tagging and adoption.
